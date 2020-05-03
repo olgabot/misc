@@ -1,0 +1,133 @@
+import pandas as pd
+import glob
+import os
+
+csvs_path = "/Users/pranathivemuri/Downloads/brawand2011/csvs/"
+csvs = glob.glob(os.path.join(csvs_path, "*.csv"))
+len(csvs)
+species = [
+    "human", "bonobo", "chimpanzee", "gorilla", "macaque", "mouse",
+    "orangutan", "chicken", "opossum", "platypus"]
+mammals = [
+    "human", "bonobo", "chimpanzee", "gorilla", "macaque", "orangutan"]
+mammals_ids = [mammal + "_id" for mammal in mammals]
+species_ids = [spec + "_id" for spec in species]
+species_homology_type = [spec + "_homology_type" for spec in species]
+
+
+df = pd.DataFrame(columns=species_ids)
+
+df_with_orthology = pd.DataFrame(
+    columns=species_ids + species_homology_type + ["species"])
+
+columns_to_keep = ["Gene stable ID", "{} gene stable ID", "{} homology type"]
+filtered_dfs = []
+tidied_df_one_many = pd.DataFrame(columns=species_ids)
+tidied_df_one_one = pd.DataFrame(columns=species_ids)
+
+homology_types = [
+    'ortholog_one2one', 'ortholog_one2many', 'ortholog_many2many']
+
+
+def tidy_df(filtered_df, species, ortho_types):
+    tidied_df = pd.DataFrame(columns=[
+        "human_id", species + "_id", species + "_homology_type"])
+    homology_type_column = columns_to_keep[2].format(species.capitalize())
+    filtered_df = filtered_df.loc[
+        filtered_df[homology_type_column].isin(ortho_types)]
+    tidied_df["human_id"] = filtered_df[columns_to_keep[0]]
+    tidied_df[species + "_id"] = filtered_df[
+        columns_to_keep[1].format(species.capitalize())]
+    tidied_df[species + "_homology_type"] = filtered_df[homology_type_column]
+    tidied_df = tidied_df.reset_index(drop=True)
+    return tidied_df
+
+
+def tidy_list_of_dataframes(list_of_dfs, species_unordered):
+    columns = [
+        "human_id", "other_species_id", "other_species_name", "orthology_type"]
+    human_ids = []
+    other_species_ids = []
+    species_list = []
+    orthology_types = []
+    tidied_df = pd.DataFrame(columns=columns)
+    for index, df in enumerate(list_of_dfs):
+        species = species_unordered[index]
+        human_ids += df["human_id"].values.tolist()
+        other_species_ids += df[species + "_id"].values.tolist()
+        species_list += [species] * len(df)
+        orthology_types += df[species + "_homology_type"].values.tolist()
+    tidied_df["human_id"] = human_ids
+    tidied_df["other_species_id"] = other_species_ids
+    tidied_df["other_species_name"] = species_list
+    tidied_df["orthology_type"] = orthology_types
+    return tidied_df
+
+
+tidied_df_one_manys = []
+tidied_df_one_oness = []
+species_unordered = []
+
+for index, input_csv in enumerate(csvs):
+    input_df = pd.read_csv(input_csv)
+    species = os.path.basename(input_csv).replace(
+        ".csv", "").replace("human_", "")
+    human_gene_id = columns_to_keep[0]
+    filtered_df = input_df.filter(items=[
+        human_gene_id,
+        columns_to_keep[1].format(species.capitalize()),
+        columns_to_keep[2].format(species.capitalize())])
+    tidied_df_one_manys.append(tidy_df(
+        filtered_df, species, homology_types[1:]))
+    tidied_df_one_oness.append(tidy_df(
+        filtered_df, species, [homology_types[0]]))
+    species_unordered.append(species)
+
+# Join all tidied_dfs columns even if a read id is repeated its okay
+
+tidied_df_one_many = tidy_list_of_dataframes(
+    tidied_df_one_manys, species_unordered)
+tidied_df_one_many.to_csv(
+    "tidied_df_all_species_one_to_many_many_to_one.csv", index=False)
+
+tidied_df_one_one = tidy_list_of_dataframes(
+    tidied_df_one_oness, species_unordered)
+tidied_df_one_one.to_csv(
+    "tidied_df_all_species_one_to_one.csv", index=False)
+
+tidied_df_one_many_mammals = tidied_df_one_many.loc[
+    tidied_df_one_many["other_species_name"].isin(mammals)]
+tidied_df_one_many_mammals.to_csv(
+    "tidied_df_mammals_one_to_many_many_to_one.csv", index=False)
+
+tidied_df_one_one_mammals = tidied_df_one_one.loc[
+    tidied_df_one_one["other_species_name"].isin(mammals)]
+tidied_df_one_one_mammals.to_csv(
+    "tidied_df_mammals_one_to_one.csv", index=False)
+
+tidied_df_all_species_all_homology_types = pd.concat(
+    [tidied_df_one_many, tidied_df_one_one], axis=0, sort=False)
+tidied_df_all_species_all_homology_types.to_csv(
+    "tidied_df_all_species_all_homology_types.csv", index=False)
+
+tidied_df_mammals_all_homology_types = pd.concat(
+    [tidied_df_one_many_mammals, tidied_df_one_one_mammals],
+    axis=0, sort=False)
+tidied_df_mammals_all_homology_types.to_csv(
+    "tidied_df_mammals_all_homology_types.csv", index=False)
+
+# this has all 1:1 genes for the species relative to human,
+# but hasn’t been filtered for the same 1:1 genes across all
+tidied_df_one_one.other_species_name.value_counts()
+# Ideally there would be the same number of 1:1 genes across all species
+# It might be because the homology is determined at the
+# protein level, and there can be multiple protein sequences per gene ID
+tidied_df_one_one.groupby(
+    ['human_id', 'other_species_id']).size()
+tidy_no_duplicates = tidied_df_one_one.drop_duplicates(
+    subset=['other_species_id'])
+data2d = tidy_no_duplicates.pivot(
+    index='human_id', values='other_species_id', columns='other_species_name')
+data2d_across_all_species = data2d.dropna()
+
+data2d_across_all_species.to_csv("all_species_by_name_one_one.csv")
