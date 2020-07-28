@@ -34,7 +34,7 @@ def save_reads_only_in_k2g(index):
     no_k2g = os.path.join(NO_K2G_FASTA_PATH, os.path.basename(k2g))
     record_names_no_k2g = get_record_names(no_k2g)
     filename = os.path.join(K2G_INTERSECT, os.path.basename(k2g).replace(
-        ".fasta", "_intersect.fasta"))
+        ".fasta", "_difference.fasta"))
     result_fasta = open(filename, "a")
     print(record_names_no_k2g[:5])
     print(k2g)
