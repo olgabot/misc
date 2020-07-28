@@ -41,8 +41,7 @@ def save_reads_only_in_k2g(index):
     db_k2g = screed.read_fasta_sequences(k2g)
     for name in db_k2g:
         if name not in record_names_no_k2g:
-            continue
-        result_fasta.write(">{}\n{}\n".format(name, db_k2g[name].sequence))
+            result_fasta.write(">{}\n{}\n".format(name, db_k2g[name].sequence))
 
 
 with Pool(12) as p:
